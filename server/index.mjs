@@ -139,6 +139,7 @@ const MIME_MAP = {
 };
 
 const server = http.createServer(async (req, res) => {
+  res.on('error', () => {});
   setCors(res);
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -146,8 +147,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const parsedUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-  const pathname = parsedUrl.pathname;
+  let pathname = '/';
+  try {
+    const parsedUrl = new URL(req.url || '/', 'http://localhost');
+    pathname = parsedUrl.pathname;
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Bad URL');
+    return;
+  }
 
   try {
     if (pathname === '/api/health' && req.method === 'GET') {
@@ -308,9 +316,20 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Serve built frontend static files from dist/
-  let safePath = path.normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(pathname);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Bad Request');
+    return;
+  }
+  let safePath = path.normalize(decodedPath).replace(/^(\.\.[/\\])+/, '');
   if (safePath === '/' || safePath === '\\') safePath = '/index.html';
-  let filePath = path.join(DIST_DIR, safePath);
+  let filePath = path.resolve(DIST_DIR, safePath.replace(/^[/\\]+/, ''));
+  if (!filePath.startsWith(DIST_DIR + path.sep) && filePath !== DIST_DIR) {
+    filePath = path.join(DIST_DIR, 'index.html');
+  }
 
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
     filePath = path.join(DIST_DIR, 'index.html');
@@ -331,7 +350,20 @@ const server = http.createServer(async (req, res) => {
     'Content-Type': contentType,
     'Cache-Control': cacheControl,
   });
-  fs.createReadStream(filePath).pipe(res);
+  const stream = fs.createReadStream(filePath);
+  stream.on('error', () => {
+    if (!res.headersSent) res.writeHead(500);
+    res.end();
+  });
+  res.on('close', () => stream.destroy());
+  stream.pipe(res);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT]', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[UNHANDLED]', err);
 });
 
 server.listen(PORT, '0.0.0.0', () => {
