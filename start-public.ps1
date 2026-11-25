@@ -9,9 +9,9 @@ $srv = Start-Process -FilePath "node" -ArgumentList "server/index.mjs" -PassThru
 
 Start-Sleep -Seconds 1
 
-Write-Host "[3/3] Opening Public HTTPS Tunnel (Cloudflare)..." -ForegroundColor Magenta
+Write-Host "[3/3] Opening Public HTTPS Tunnel (Cloudflare IPv4 HTTP/2)..." -ForegroundColor Magenta
 try {
-  & "D:\Tools\cloudflared\cloudflared.exe" tunnel --url http://127.0.0.1:8787
+  & "D:\Tools\cloudflared\cloudflared.exe" tunnel --url http://127.0.0.1:8787 --edge-ip-version 4 --protocol http2 --no-autoupdate
 } finally {
   if ($srv -and -not $srv.HasExited) {
     Stop-Process -Id $srv.Id -Force
